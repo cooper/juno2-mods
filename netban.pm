@@ -8,7 +8,9 @@
 # it is relative to the juno directory.
 
 # the ZLINE and KLINE commands provide the zline and kline oper flags.
-# the 
+# users with these flags can also use UNZLINE and UNKLINE.
+
+# this module requires juno 1.0.4 and above.
 
 package module::netban;
 
@@ -22,6 +24,7 @@ use DBI;
 use API::Module;
 use API::Command;
 use API::Event;
+use API::Loop;
 use utils qw[conf snotice];
 
 my $dbh;
@@ -48,14 +51,17 @@ sub init {
     # reload the bans each time the configuration is rehashed (as it usually clears them)
     register_event('rehash_done', \&load_bans);
 
+    # register the loop that removes expired bans
+    register_loop('expirecheck', \&expire_bans) or return;
+
     # load the stored bans
     load_bans();
 
     # register the commands 
-    register_command('kline', 'Ban a user by their user@host mask.', \&handle_kline) or return;
-    register_command('zline', 'Ban an IP or IP range.', \&handle_zline) or return;
-    register_command('unkline', 'Remove a user@host ban.', \&handle_unkline) or return;
-    register_command('unzline', 'Unban an IP or IP range.', \&handle_unzline) or return;
+    register_command('kline', 'Ban a user by their user@host mask.', \&handle_kline, { params => 2 }) or return;
+    register_command('zline', 'Ban an IP or IP range.', \&handle_zline, { params => 2 }) or return;
+    register_command('unkline', 'Remove a user@host ban.', \&handle_unkline, { params => 1 }) or return;
+    register_command('unzline', 'Unban an IP or IP range.', \&handle_unzline, { params => 1 }) or return;
 
     # success
     return 1
@@ -63,8 +69,8 @@ sub init {
 
 # create the tables
 sub create_db {
-    $dbh->do('CREATE TABLE IF NOT EXISTS kline (mask TEXT, setby TEXT, time INT, reason TEXT)') or return;
-    $dbh->do('CREATE TABLE IF NOT EXISTS zline (ip TEXT, setby TEXT, time INT, reason TEXT)') or return;
+    $dbh->do('CREATE TABLE IF NOT EXISTS kline (mask TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
+    $dbh->do('CREATE TABLE IF NOT EXISTS zline (ip TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
     return 1
 }
 
@@ -73,7 +79,7 @@ sub create_db {
 sub connect_db {
     my $dbfile = conf qw/netban db/;
     return unless $dbfile;
-    $dbfile = $main::DIR.'/'.$dbfile;
+    $dbfile = $main::DIR.q[/].$dbfile;
     $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", q.., q..) or return;
     return 1
 }
@@ -132,10 +138,77 @@ sub zline_check {
             $user->quit('Z-Lined: '.$main::zline{$_}{'reason'},
                 undef,
                 'Z-Lined'.((conf qw/main showzline/) ? q(: ).$main::zline{$_}{'reason'} : q..)
-            ) if (hostmatch($user->{'ip'}, $_));
+            ) if (hostmatch($user->{'ip'}, $_))
 
         }
     }
     return 1
 }
+
+# remove expired bans
+sub expire_bans {
+
+    # check k-lines
+    while (my ($mask, $kl) = each %main::kline) {
+
+        # either a config kline or a permanent kline
+        next unless $kl->{expiretime};
+
+        # check if the time is up
+        if ($kl->{expiretime} - time <= 0) {
+            delete_kline($mask);
+            snotice("expired kline: $mask set at $$kl{time}: $$kl{reason}")
+        }
+
+    }
+
+    # check z-lines
+    while (my ($ip, $zl) = each %main::zline) {
+
+        # either a config zline or a permanent zline
+        next unless $zl->{expiretime};
+
+        # check if the time is up
+        if ($zl->{expiretime} - time <= 0) {
+            delete_zline($ip);
+            snotice("expired zline: $ip set at $$zl{time}: $$zl{reason}")
+        }
+
+    }
+
+    return 1
+}
+
+# delete a KLINE by mask
+sub delete_kline {
+    my $mask = shift;
+    if (exists $main::kline{$mask}) {
+        $dbh->do('DELETE FROM kline WHERE mask = ?', undef, $mask) or return;
+        return delete $main::kline{$mask}
+    }
+
+    # no such kline
+    else {
+        return
+    }
+
+    return 1
+}
+
+# delete a ZLINE by IP
+sub delete_zline {
+    my $ip = shift;
+    if (exists $main::zline{$ip}) {
+        $dbh->do('DELETE FROM zline WHERE mask = ?', undef, $ip) or return;
+        return delete $main::zline{$ip}
+    }
+
+    # no such zline
+    else {
+        return
+    }
+
+    return 1
+}
+
 1
