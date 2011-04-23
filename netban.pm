@@ -133,6 +133,8 @@ sub load_bans {
 
 # handle ZLINE command
 sub handle_zline {
+    my ($user, @args) = (shift, split /\s+/, shift);
+
 }
 
 # handle KLINE command
