@@ -10,6 +10,10 @@
 # the ZLINE and KLINE commands provide the zline and kline oper flags.
 # users with these flags can also use UNZLINE and UNKLINE.
 
+# this module also provides the LISTKLINES and LISTZLINES commands.
+# they display a list of bans that is easier to read than STATS.
+# these commands require the kline and zline flags as well.
+
 # this module requires juno 1.0.4 and above.
 
 package module::netban;
@@ -57,11 +61,31 @@ sub init {
     # load the stored bans
     load_bans();
 
-    # register the commands 
-    register_command('kline', 'Ban a user by their user@host mask.', \&handle_kline, { params => 2 }) or return;
-    register_command('zline', 'Ban an IP or IP range.', \&handle_zline, { params => 2 }) or return;
-    register_command('unkline', 'Remove a user@host ban.', \&handle_unkline, { params => 1 }) or return;
-    register_command('unzline', 'Unban an IP or IP range.', \&handle_unzline, { params => 1 }) or return;
+    # register the commands
+
+    register_command('kline', 'Ban a user by their user@host mask.', \&handle_kline, {
+        params => 2,
+        flag => 'kline'
+    }) or return;
+
+    register_command('zline', 'Ban an IP or IP range.', \&handle_zline, {
+        params => 2,
+        flag => 'zline'
+    }) or return;
+
+    register_command('unkline', 'Remove a user@host ban.', \&handle_unkline, {
+        params => 1,
+        flag => 'kline'
+    }) or return;
+
+    register_command('unzline', 'Unban an IP or IP range.', \&handle_unzline, {
+        params => 1,
+        flag => 'zline'
+    }) or return;
+
+    register_command('listklines', 'A K-Line list that is easier to read than STATS.', \&handle_listklines, {
+        flag => 'kline'
+    }) or return;
 
     # success
     return 1
@@ -121,6 +145,45 @@ sub handle_unzline {
 
 # handle UNKLINE command
 sub handle_unkline {
+}
+
+# handle LISTKLINES command
+sub handle_listklines {
+    my $user = shift;
+    my ($m, $t, $s, $e) = (4, 9, 8, 9);
+    $user->servernotice('*** K-Line list');
+
+    # fetch the width of the sections
+    while (my ($mask, $kl) = each %main::kline) {
+        $m = length $mask if length $mask > $m;
+        next unless $kl->{time};
+        my $time = length POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{time});
+        $t = $time if $time > $t;
+        $s = length $kl->{setby} if length $kl->{setby} > $s;
+        my $etime = length POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{expiretime});
+        $e = $etime if $etime > $e;
+    }
+
+    # extra space to make it easier to read
+    $m++; $t++; $s++; $e++;
+
+    # section bar
+    $user->servernotice(sprintf "%-${m}s %-${t}s %-${s}s %-${e}s %s", 'mask', 'time set', 'set by', 'expires', 'reason');
+    $user->servernotice(sprintf "%-${m}s %-${t}s %-${s}s %-${e}s %s", qw[---- -------- ------ ------- ------]);
+
+    # send the klines
+    while (my ($mask, $kl) = each %main::kline) {
+        $user->servernotice(sprintf "\2%-${m}s\2 %-${t}s %-${s}s %-${e}s %s",
+            $mask,
+            $kl->{time} ? POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{time}) : 'permanent',
+            $kl->{setby} ? $kl->{setby} : '<config>',
+            $kl->{expiretime} ? POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{expiretime}) : 'permanent',
+            $kl->{reason}
+        );
+    }
+
+    $user->servernotice('*** End of K-Line list.');
+    return 1
 }
 
 # check all users for a K-Line
