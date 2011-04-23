@@ -6,7 +6,7 @@
 # parameters: <nick> <priv> [<priv>] [...]
 
 # adds UNGRANT command.
-# ^ requires the ungrant oper flag
+# ^ requires the grant oper flag
 # parameters: <nick> <priv> [<priv>] [...]
 
 # adds PRIVS command.
@@ -25,7 +25,7 @@ use API::Command;
 use utils 'snotice';
 
 # register the module to API::Module
-register_module('grant', 0.4, 'Easily manage your oper flags.', \&init, sub { return 1 });
+register_module('grant', 0.5, 'Easily manage your oper flags.', \&init, sub { return 1 });
 
 sub init {
 
@@ -85,7 +85,7 @@ sub handle_ungrant {
     }
 
     # check for required permission
-    if ($user->can('ungrant')) {
+    if ($user->can('grant')) {
 
         # check for existing nick
         my $target = user::nickexists($args[1]);

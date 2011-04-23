@@ -8,6 +8,7 @@
 # it is relative to the juno directory.
 
 # the ZLINE and KLINE commands provide the zline and kline oper flags.
+# the 
 
 package module::netban;
 
@@ -51,8 +52,10 @@ sub init {
     load_bans();
 
     # register the commands 
-    register_command('kline', 'Ban or unban a user by their user@host mask.', \&handle_kline) or return;
+    register_command('kline', 'Ban a user by their user@host mask.', \&handle_kline) or return;
     register_command('zline', 'Ban an IP or IP range.', \&handle_zline) or return;
+    register_command('unkline', 'Remove a user@host ban.', \&handle_unkline) or return;
+    register_command('unzline', 'Unban an IP or IP range.', \&handle_unzline) or return;
 
     # success
     return 1
@@ -104,6 +107,14 @@ sub handle_zline {
 
 # handle KLINE command
 sub handle_kline {
+}
+
+# handle UNZLINE command
+sub handle_unzline {
+}
+
+# handle UNKLINE command
+sub handle_unkline {
 }
 
 # check all users for a K-Line
