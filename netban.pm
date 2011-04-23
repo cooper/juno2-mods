@@ -1,18 +1,18 @@
 #!/usr/bin/perl
 # Copyright (c) 2011, Mitchell Cooper
 
-# this module adds commands for Z-Lines and K-Lines.
+# this module adds commands for D-Lines and K-Lines.
 # it requires DBD::SQLite.
 
 # the datbase location is defined by netban:db.
 # it is relative to the juno directory.
 
-# the ZLINE and KLINE commands provide the zline and kline oper flags.
-# users with these flags can also use UNZLINE and UNKLINE.
+# the DLINE and KLINE commands provide the dline and kline oper flags.
+# users with these flags can also use UNDLINE and UNKLINE.
 
-# this module also provides the LISTKLINES and LISTZLINES commands.
+# this module also provides the LISTKLINES and LISTDLINES commands.
 # they display a list of bans that is easier to read than STATS.
-# these commands require the kline and zline flags as well.
+# these commands require the kline and dline flags as well.
 
 # this module requires juno 1.0.4 and above.
 
@@ -34,7 +34,7 @@ use utils qw[conf snotice];
 my $dbh;
 
 # register to API::Module
-register_module('netban', 'unfinished', 'Command interface to Z-Line and K-Line.', \&init, sub { return 1 });
+register_module('netban', 'unfinished', 'Command interface to D-Line and K-Line.', \&init, sub { return 1 });
 
 sub init {
 
@@ -68,9 +68,9 @@ sub init {
         flag => 'kline'
     }) or return;
 
-    register_command('zline', 'Ban an IP or IP range.', \&handle_zline, {
+    register_command('dline', 'Ban an IP or IP range.', \&handle_dline, {
         params => 2,
-        flag => 'zline'
+        flag => 'dline'
     }) or return;
 
     register_command('unkline', 'Remove a user@host ban.', \&handle_unkline, {
@@ -78,9 +78,9 @@ sub init {
         flag => 'kline'
     }) or return;
 
-    register_command('unzline', 'Unban an IP or IP range.', \&handle_unzline, {
+    register_command('undline', 'Unban an IP or IP range.', \&handle_undline, {
         params => 1,
-        flag => 'zline'
+        flag => 'dline'
     }) or return;
 
     register_command('listklines', 'A K-Line list that is easier to read than STATS.', \&handle_listklines, {
@@ -94,7 +94,7 @@ sub init {
 # create the tables
 sub create_db {
     $dbh->do('CREATE TABLE IF NOT EXISTS kline (mask TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
-    $dbh->do('CREATE TABLE IF NOT EXISTS zline (ip TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
+    $dbh->do('CREATE TABLE IF NOT EXISTS dline (ip TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
     return 1
 }
 
@@ -118,21 +118,21 @@ sub load_bans {
         $main::kline{delete $ref->{mask}} = $ref
     }
 
-    my $sth2 = $dbh->prepare('SELECT * FROM zline');
+    my $sth2 = $dbh->prepare('SELECT * FROM dline');
     $sth2->execute;
     while (my $ref = $sth2->fetchrow_hashref) {
-        $main::zline{delete $ref->{ip}} = $ref
+        $main::dline{delete $ref->{ip}} = $ref
     }
 
     # check each user for a ban
     kline_check();
-    zline_check();
+    dline_check();
 
     return 1
 }
 
-# handle ZLINE command
-sub handle_zline {
+# handle DLINE command
+sub handle_dline {
     my ($user, @args) = (shift, split /\s+/, shift);
 
 }
@@ -141,8 +141,8 @@ sub handle_zline {
 sub handle_kline {
 }
 
-# handle UNZLINE command
-sub handle_unzline {
+# handle UNDLINE command
+sub handle_undline {
 }
 
 # handle UNKLINE command
@@ -194,15 +194,15 @@ sub kline_check {
     return 1
 }
 
-# check all users for a Z-Line
-sub zline_check {
+# check all users for a D-Line
+sub dline_check {
     foreach my $user (values %user::connection) {
-        foreach (keys %main::zline) {
+        foreach (keys %main::dline) {
 
             # found a match!
-            $user->quit('Z-Lined: '.$main::zline{$_}{'reason'},
+            $user->quit('D-Lined: '.$main::dline{$_}{'reason'},
                 undef,
-                'Z-Lined'.((conf qw/main showzline/) ? q(: ).$main::zline{$_}{'reason'} : q..)
+                'D-Lined'.((conf qw/main showdline/) ? q(: ).$main::dline{$_}{'reason'} : q..)
             ) if (hostmatch($user->{'ip'}, $_))
 
         }
@@ -227,16 +227,16 @@ sub expire_bans {
 
     }
 
-    # check z-lines
-    while (my ($ip, $zl) = each %main::zline) {
+    # check d-lines
+    while (my ($ip, $zl) = each %main::dline) {
 
-        # either a config zline or a permanent zline
+        # either a config dline or a permanent dline
         next unless $zl->{expiretime};
 
         # check if the time is up
         if ($zl->{expiretime} - time <= 0) {
-            delete_zline($ip);
-            snotice("expired zline: $ip set at $$zl{time}: $$zl{reason}")
+            delete_dline($ip);
+            snotice("expired dline: $ip set at $$zl{time}: $$zl{reason}")
         }
 
     }
@@ -260,15 +260,15 @@ sub delete_kline {
     return 1
 }
 
-# delete a ZLINE by IP
-sub delete_zline {
+# delete a DLINE by IP
+sub delete_dline {
     my $ip = shift;
-    if (exists $main::zline{$ip}) {
-        $dbh->do('DELETE FROM zline WHERE mask = ?', undef, $ip) or return;
-        return delete $main::zline{$ip}
+    if (exists $main::dline{$ip}) {
+        $dbh->do('DELETE FROM dline WHERE mask = ?', undef, $ip) or return;
+        return delete $main::dline{$ip}
     }
 
-    # no such zline
+    # no such dline
     else {
         return
     }
