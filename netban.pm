@@ -14,14 +14,14 @@
 # they display a list of bans that is easier to read than STATS.
 # these commands require the kline and dline flags as well.
 
-# this module requires juno 1.0.4 and above.
+# this module requires juno 1.0.6 and above.
 
 package module::netban;
 
 
 use warnings;
 use strict;
-use feature 'say';
+use feature qw[say switch];
 
 use DBI;
 
@@ -29,7 +29,7 @@ use API::Module;
 use API::Command;
 use API::Event;
 use API::Loop;
-use utils qw[conf snotice];
+use utils qw[conf snotice col time2seconds add_commas];
 
 my $dbh;
 
@@ -64,12 +64,12 @@ sub init {
     # register the commands
 
     register_command('kline', 'Ban a user by their user@host mask.', \&handle_kline, {
-        params => 2,
+        params => 3,
         flag => 'kline'
     }) or return;
 
     register_command('dline', 'Ban an IP or IP range.', \&handle_dline, {
-        params => 2,
+        params => 3,
         flag => 'dline'
     }) or return;
 
@@ -131,14 +131,27 @@ sub load_bans {
     return 1
 }
 
-# handle DLINE command
-sub handle_dline {
-    my ($user, @args) = (shift, split /\s+/, shift);
-
-}
-
 # handle KLINE command
 sub handle_kline {
+
+    my ($user, @args) = (shift, (split /\s+/, shift));
+    my ($mask, $time) = (lc shift @args, lc shift @args);
+
+    # strip possible :
+    my $reason = col(join ' ', @args);
+
+    # make sure it doesn't exist already.
+    if (exists $main::kline{lc $mask}) {
+
+    }
+
+    return &kline_check
+}
+
+# handle DLINE command
+sub handle_dline {
+    my ($user, @args) = (shift, (split /\s+/, shift));
+
 }
 
 # handle UNDLINE command
@@ -244,6 +257,11 @@ sub expire_bans {
     return 1
 }
 
+# add a K-Line
+sub add_kline {
+    my ($mask, $setby, $expiretime, $reason) = @_;
+}
+
 # delete a KLINE by mask
 sub delete_kline {
     my $mask = shift;
@@ -275,5 +293,6 @@ sub delete_dline {
 
     return 1
 }
+
 
 1

@@ -12,7 +12,7 @@
 
 # all three of these commands require the 'grant' oper flag.
 
-# this module requires 1.0.1 and above
+# this module requires 1.0.6 and above
 
 package module::grant;
 
