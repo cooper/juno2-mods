@@ -29,7 +29,7 @@ use API::Module;
 use API::Command;
 use API::Event;
 use API::Loop;
-use utils qw[conf snotice col time2seconds add_commas];
+use utils qw[conf snotice col time2seconds add_commas valid_ipv6 valid_ipv4 hostmatch];
 
 my $dbh;
 
@@ -210,9 +210,82 @@ sub add_kline {
 
 }
 
+# add a D-Line
+sub add_dline {
+    my ($ip, $setby, $seconds, $currenttime, $reason) = @_;
+
+    my $expiretime = $currenttime + $seconds;
+
+    # insert into db
+    $dbh->do('INSERT INTO dline VALUES (?, ?, ?, ?, ?)', undef, $ip, $setby, $currenttime, $expiretime, $reason) or return;
+
+    # add to kline list
+    $main::dline{$ip} = {
+        setby => $setby,
+        expiretime => $expiretime,
+        reason => $reason,
+        time => $currenttime
+    };
+
+    # success
+    return 1
+
+}
+
 # handle DLINE command
 sub handle_dline {
+
     my ($user, @args) = (shift, (split /\s+/, shift));
+    shift @args;
+    my ($ip, $gtime) = (lc shift @args, lc shift @args);
+
+    # strip possible :
+    my $reason = col(join ' ', @args);
+
+    # make sure it doesn't exist already.
+    if (!exists $main::dline{$ip}) {
+
+
+        # validate the ip
+        if (!valid_ipv6($ip) && !valid_ipv4($ip)) {
+            $user->snt('dline', "\2$ip\2 is not a valid IP address.");
+            return
+        }
+
+        my $time = 0;
+
+        # see if the time is valid
+        if ($gtime) {
+            $time = time2seconds($gtime);
+            if (!defined $time) {
+                $user->snt('dline', "invalid ban time: $gtime");
+                return
+            }
+        }
+
+        # otherwise it's a permanent ban.
+
+        if (add_dline($ip, $user->fullhost, $time, time, $reason)) {
+            $user->snt('dline', 'k-line added successfully.');
+            snotice("$$user{nick} added a d-line for \2$ip\2 to expire in \2$gtime\2 (".add_commas($time)." seconds) [$reason]");
+        }
+
+        else {
+            $user->snt('dline', 'could not write d-line to database.');
+            return
+        }
+
+    }
+
+    # it exists already
+    else {
+        $user->snt('dline', 'there is already a dline of that IP.');
+        return
+    }
+
+
+    # check users for dline
+    return &dline_check
 
 }
 
@@ -303,15 +376,15 @@ sub expire_bans {
     }
 
     # check d-lines
-    while (my ($ip, $zl) = each %main::dline) {
+    while (my ($ip, $dl) = each %main::dline) {
 
-        # either a config dline or a permanent dline
-        next unless $zl->{expiretime};
+        # either a config kline or a permanent dline
+        next unless $dl->{expiretime};
 
         # check if the time is up
-        if ($zl->{expiretime} - time <= 0) {
+        if ($dl->{expiretime} - time <= 0) {
             delete_dline($ip);
-            snotice("expired dline: $ip set at $$zl{time}: $$zl{reason}")
+            snotice("expired dline: \2$ip\2 [$$dl{reason}]")
         }
 
     }
@@ -339,7 +412,7 @@ sub delete_kline {
 sub delete_dline {
     my $ip = shift;
     if (exists $main::dline{$ip}) {
-        $dbh->do('DELETE FROM dline WHERE mask = ?', undef, $ip) or return;
+        $dbh->do('DELETE FROM dline WHERE ip = ?', undef, $ip) or return;
         return delete $main::dline{$ip}
     }
 
