@@ -135,17 +135,79 @@ sub load_bans {
 sub handle_kline {
 
     my ($user, @args) = (shift, (split /\s+/, shift));
-    my ($mask, $time) = (lc shift @args, lc shift @args);
+    shift @args;
+    my ($mask, $gtime) = (lc shift @args, lc shift @args);
 
     # strip possible :
     my $reason = col(join ' ', @args);
 
     # make sure it doesn't exist already.
-    if (exists $main::kline{lc $mask}) {
+    if (!exists $main::kline{$mask}) {
+
+
+        # validate the mask
+        if ($mask !~ m/(.+)\@(.+)/) {
+            $user->snt('kline', "\2$mask\2 is not a valid mask.");
+            return
+        }
+
+        my $time = 0;
+
+        # see if the time is valid
+        if ($gtime) {
+            $time = time2seconds($gtime);
+            if (!defined $time) {
+                $user->snt('kline', "invalid ban time: $gtime");
+                return
+            }
+        }
+
+        # otherwise it's a permanent ban.
+
+        if (add_kline($mask, $user->fullhost, $time, time, $reason)) {
+            $user->snt('kline', 'k-line added successfully.');
+            snotice("$$user{nick} added a k-line for \2$mask\2 to expire in \2$gtime\2 (".add_commas($time)." seconds) [$reason]");
+        }
+
+        else {
+            $user->snt('kline', 'could not write k-line to database.');
+            return
+        }
 
     }
 
+    # it exists already
+    else {
+        $user->snt('kline', 'there is already a kline of that mask.');
+        return
+    }
+
+
+    # check users for kline
     return &kline_check
+
+}
+
+# add a K-Line
+sub add_kline {
+    my ($mask, $setby, $seconds, $currenttime, $reason) = @_;
+
+    my $expiretime = $currenttime + $seconds;
+
+    # insert into db
+    $dbh->do('INSERT INTO kline VALUES (?, ?, ?, ?, ?)', undef, $mask, $setby, $currenttime, $expiretime, $reason) or return;
+
+    # add to kline list
+    $main::kline{$mask} = {
+        setby => $setby,
+        expiretime => $expiretime,
+        reason => $reason,
+        time => $currenttime
+    };
+
+    # success
+    return 1
+
 }
 
 # handle DLINE command
@@ -174,7 +236,7 @@ sub handle_listklines {
         next unless $kl->{time};
         my $time = length POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{time});
         $t = $time if $time > $t;
-        $s = length $kl->{setby} if length $kl->{setby} > $s;
+        $s = length((split '!', $kl->{setby})[0]) if length((split '!', $kl->{setby})[0]) > $s;
         my $etime = length POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{expiretime});
         $e = $etime if $etime > $e;
     }
@@ -191,7 +253,7 @@ sub handle_listklines {
         $user->servernotice(sprintf "\2%-${m}s\2 %-${t}s %-${s}s %-${e}s %s",
             $mask,
             $kl->{time} ? POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{time}) : 'permanent',
-            $kl->{setby} ? $kl->{setby} : '<config>',
+            $kl->{setby} ? (split '!', $kl->{setby})[0] : '<config>',
             $kl->{expiretime} ? POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $kl->{expiretime}) : 'permanent',
             $kl->{reason}
         );
@@ -235,7 +297,7 @@ sub expire_bans {
         # check if the time is up
         if ($kl->{expiretime} - time <= 0) {
             delete_kline($mask);
-            snotice("expired kline: $mask set at $$kl{time}: $$kl{reason}")
+            snotice("expired kline: \2$mask\2 [$$kl{reason}]")
         }
 
     }
@@ -255,11 +317,6 @@ sub expire_bans {
     }
 
     return 1
-}
-
-# add a K-Line
-sub add_kline {
-    my ($mask, $setby, $expiretime, $reason) = @_;
 }
 
 # delete a KLINE by mask
