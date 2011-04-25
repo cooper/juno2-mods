@@ -95,46 +95,6 @@ sub init {
     return 1
 }
 
-# create the tables
-sub create_db {
-    $dbh->do('CREATE TABLE IF NOT EXISTS kline (mask TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
-    $dbh->do('CREATE TABLE IF NOT EXISTS dline (ip TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
-    return 1
-}
-
-
-# connect to SQLite
-sub connect_db {
-    my $dbfile = conf qw/netban db/;
-    return unless $dbfile;
-    $dbfile = $main::DIR.q[/].$dbfile;
-    $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", q.., q..) or return;
-    return 1
-}
-
-# load the stored klines
-sub load_bans {
-
-    # klines
-    my $sth = $dbh->prepare('SELECT * FROM kline');
-    $sth->execute;
-    while (my $ref = $sth->fetchrow_hashref) {
-        $main::kline{delete $ref->{mask}} = $ref
-    }
-
-    my $sth2 = $dbh->prepare('SELECT * FROM dline');
-    $sth2->execute;
-    while (my $ref = $sth2->fetchrow_hashref) {
-        $main::dline{delete $ref->{ip}} = $ref
-    }
-
-    # check each user for a ban
-    kline_check();
-    dline_check();
-
-    return 1
-}
-
 # handle KLINE command
 sub handle_kline {
 
@@ -189,50 +149,6 @@ sub handle_kline {
 
     # check users for kline
     return &kline_check
-
-}
-
-# add a K-Line
-sub add_kline {
-    my ($mask, $setby, $seconds, $currenttime, $reason) = @_;
-
-    my $expiretime = $currenttime + $seconds;
-
-    # insert into db
-    $dbh->do('INSERT INTO kline VALUES (?, ?, ?, ?, ?)', undef, $mask, $setby, $currenttime, $expiretime, $reason) or return;
-
-    # add to kline list
-    $main::kline{$mask} = {
-        setby => $setby,
-        expiretime => $expiretime,
-        reason => $reason,
-        time => $currenttime
-    };
-
-    # success
-    return 1
-
-}
-
-# add a D-Line
-sub add_dline {
-    my ($ip, $setby, $seconds, $currenttime, $reason) = @_;
-
-    my $expiretime = $currenttime + $seconds;
-
-    # insert into db
-    $dbh->do('INSERT INTO dline VALUES (?, ?, ?, ?, ?)', undef, $ip, $setby, $currenttime, $expiretime, $reason) or return;
-
-    # add to kline list
-    $main::dline{$ip} = {
-        setby => $setby,
-        expiretime => $expiretime,
-        reason => $reason,
-        time => $currenttime
-    };
-
-    # success
-    return 1
 
 }
 
@@ -379,6 +295,122 @@ sub handle_listdlines {
     return 1
 }
 
+# create the tables
+sub create_db {
+    $dbh->do('CREATE TABLE IF NOT EXISTS kline (mask TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
+    $dbh->do('CREATE TABLE IF NOT EXISTS dline (ip TEXT, setby TEXT, time INT, expiretime INT, reason TEXT)') or return;
+    return 1
+}
+
+
+# connect to SQLite
+sub connect_db {
+    my $dbfile = conf qw/netban db/;
+    return unless $dbfile;
+    $dbfile = $main::DIR.q[/].$dbfile;
+    $dbh = DBI->connect("dbi:SQLite:dbname=$dbfile", q.., q..) or return;
+    return 1
+}
+
+# load the stored klines
+sub load_bans {
+
+    # klines
+    my $sth = $dbh->prepare('SELECT * FROM kline');
+    $sth->execute;
+    while (my $ref = $sth->fetchrow_hashref) {
+        $main::kline{delete $ref->{mask}} = $ref
+    }
+
+    my $sth2 = $dbh->prepare('SELECT * FROM dline');
+    $sth2->execute;
+    while (my $ref = $sth2->fetchrow_hashref) {
+        $main::dline{delete $ref->{ip}} = $ref
+    }
+
+    # check each user for a ban
+    kline_check();
+    dline_check();
+
+    return 1
+}
+
+# add a K-Line
+sub add_kline {
+    my ($mask, $setby, $seconds, $currenttime, $reason) = @_;
+
+    my $expiretime = $currenttime + $seconds;
+
+    # insert into db
+    $dbh->do('INSERT INTO kline VALUES (?, ?, ?, ?, ?)', undef, $mask, $setby, $currenttime, $expiretime, $reason) or return;
+
+    # add to kline list
+    $main::kline{$mask} = {
+        setby => $setby,
+        expiretime => $expiretime,
+        reason => $reason,
+        time => $currenttime
+    };
+
+    # success
+    return 1
+
+}
+
+# add a D-Line
+sub add_dline {
+    my ($ip, $setby, $seconds, $currenttime, $reason) = @_;
+
+    my $expiretime = $currenttime + $seconds;
+
+    # insert into db
+    $dbh->do('INSERT INTO dline VALUES (?, ?, ?, ?, ?)', undef, $ip, $setby, $currenttime, $expiretime, $reason) or return;
+
+    # add to kline list
+    $main::dline{$ip} = {
+        setby => $setby,
+        expiretime => $expiretime,
+        reason => $reason,
+        time => $currenttime
+    };
+
+    # success
+    return 1
+
+}
+
+# delete a KLINE by mask
+sub delete_kline {
+    my $mask = shift;
+    if (exists $main::kline{$mask}) {
+        $dbh->do('DELETE FROM kline WHERE mask = ?', undef, $mask) or return;
+        return delete $main::kline{$mask}
+    }
+
+    # no such kline
+    else {
+        return
+    }
+
+    return 1
+}
+
+# delete a DLINE by IP
+sub delete_dline {
+    my $ip = shift;
+    if (exists $main::dline{$ip}) {
+        $dbh->do('DELETE FROM dline WHERE ip = ?', undef, $ip) or return;
+        return delete $main::dline{$ip}
+    }
+
+    # no such dline
+    else {
+        return
+    }
+
+    return 1
+}
+
 # check all users for a K-Line
 sub kline_check {
     $_->checkkline foreach values %user::connection;
@@ -434,38 +466,5 @@ sub expire_bans {
 
     return 1
 }
-
-# delete a KLINE by mask
-sub delete_kline {
-    my $mask = shift;
-    if (exists $main::kline{$mask}) {
-        $dbh->do('DELETE FROM kline WHERE mask = ?', undef, $mask) or return;
-        return delete $main::kline{$mask}
-    }
-
-    # no such kline
-    else {
-        return
-    }
-
-    return 1
-}
-
-# delete a DLINE by IP
-sub delete_dline {
-    my $ip = shift;
-    if (exists $main::dline{$ip}) {
-        $dbh->do('DELETE FROM dline WHERE ip = ?', undef, $ip) or return;
-        return delete $main::dline{$ip}
-    }
-
-    # no such dline
-    else {
-        return
-    }
-
-    return 1
-}
-
 
 1
