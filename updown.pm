@@ -11,34 +11,32 @@ package module::updown;
 use warnings;
 use strict;
 
-use API::Module 'register_module';
-use API::Command 'register_command';
+use API::Module;
+use API::Command;
 use utils 'conf';
 
 # register the module
-register_module('updown', 0.2, 'Grant or remove a user\'s channel access according to mode A.', \&init, sub { return 1 });
+register_module('updown', 0.3, 'Grant or remove a user\'s channel access according to mode A.', \&init, sub { return 1 });
 
 sub init {
     # register the commands
-    register_command('up', 'Gain channel privileges according to mode A', \&up);
-    register_command('down', 'Remove all channel privileges', \&down);
+
+    register_command('up', 'Gain channel privileges according to mode A', \&up, { params => 1 }) or return;
+
+    register_command('down', 'Remove all channel privileges', \&down, { params => 1 }) or return;
+
     return 1
+
 }
 
 sub up {
-    my ($user, @args) = (shift, (split /\s+/, shift));
-
-    # parameter check
-    if (!defined $args[1]) {
-        $user->numeric(461, 'UP');
-        return
-    }
-
-    my $channel = channel::chanexists($args[1]);
+    my $user = shift;
+    my $name = (split /\s+/, shift)[1];
+    my $channel = channel::chanexists($name);
 
     # make sure the channel exists
     if (!$channel) {
-        $user->numeric(401, $args[1]);
+        $user->numeric(401, $name);
         return
     }
 
@@ -55,19 +53,13 @@ sub up {
 }
 
 sub down {
-    my ($user, @args) = (shift, (split /\s+/, shift));
-
-    # parameter check
-    if (!defined $args[1]) {
-        $user->numeric(461, 'DOWN');
-        return
-    }
-
-    my $channel = channel::chanexists($args[1]);
+    my $user = shift;
+    my $name = (split /\s+/, shift)[1];
+    my $channel = channel::chanexists($name);
 
     # make sure the channel exists
     if (!$channel) {
-        $user->numeric(401, $args[1]);
+        $user->numeric(401, $name);
         return
     }
 
@@ -111,6 +103,7 @@ sub down {
 
     # success
     return 1
+
 }
 
 1
