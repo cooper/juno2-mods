@@ -87,6 +87,10 @@ sub init {
         flag => 'kline'
     }) or return;
 
+    register_command('listdlines', 'A D-Line list that is easier to read than STATS.', \&handle_listdlines, {
+        flag => 'dline'
+    }) or return;
+
     # success
     return 1
 }
@@ -333,6 +337,45 @@ sub handle_listklines {
     }
 
     $user->servernotice('*** End of K-Line list.');
+    return 1
+}
+
+# handle LISTDLINES command
+sub handle_listdlines {
+    my $user = shift;
+    my ($m, $t, $s, $e) = (2, 9, 8, 9);
+    $user->servernotice('*** D-Line list');
+
+    # fetch the width of the sections
+    while (my ($ip, $dl) = each %main::dline) {
+        $m = length $ip if length $ip > $m;
+        next unless $dl->{time};
+        my $time = length POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $dl->{time});
+        $t = $time if $time > $t;
+        $s = length((split '!', $dl->{setby})[0]) if length((split '!', $dl->{setby})[0]) > $s;
+        my $etime = length POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $dl->{expiretime});
+        $e = $etime if $etime > $e;
+    }
+
+    # extra space to make it easier to read
+    $m++; $t++; $s++; $e++;
+
+    # section bar
+    $user->servernotice(sprintf "%-${m}s %-${t}s %-${s}s %-${e}s %s", 'IP', 'time set', 'set by', 'expires', 'reason');
+    $user->servernotice(sprintf "%-${m}s %-${t}s %-${s}s %-${e}s %s", qw[-- -------- ------ ------- ------]);
+
+    # send the dlines
+    while (my ($ip, $dl) = each %main::dline) {
+        $user->servernotice(sprintf "\2%-${m}s\2 %-${t}s %-${s}s %-${e}s %s",
+            $ip,
+            $dl->{time} ? POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $dl->{time}) : 'permanent',
+            $dl->{setby} ? (split '!', $dl->{setby})[0] : '<config>',
+            $dl->{expiretime} ? POSIX::strftime('%m/%d/%Y %H:%M:%S', localtime $dl->{expiretime}) : 'permanent',
+            $dl->{reason}
+        );
+    }
+
+    $user->servernotice('*** End of D-Line list.');
     return 1
 }
 
