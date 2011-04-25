@@ -29,12 +29,12 @@ use API::Module;
 use API::Command;
 use API::Event;
 use API::Loop;
-use utils qw[conf snotice col time2seconds add_commas valid_ipv6 valid_ipv4 hostmatch];
+use utils qw[conf snotice col time2seconds add_commas hostmatch];
 
 my $dbh;
 
 # register to API::Module
-register_module('netban', 'unfinished', 'Command interface to D-Line and K-Line.', \&init, sub { return 1 });
+register_module('netban', 0.1, 'Command interface to D-Line and K-Line.', \&init, sub { return 1 });
 
 sub init {
 
@@ -167,7 +167,8 @@ sub handle_dline {
 
 
         # validate the ip
-        if (!valid_ipv6($ip) && !valid_ipv4($ip)) {
+        # the regex for this is ridiculous. I give up.
+        if ($ip !~ m/(\.|:)/) {
             $user->snt('dline', "\2$ip\2 is not a valid IP address.");
             return
         }
@@ -211,10 +212,40 @@ sub handle_dline {
 
 # handle UNDLINE command
 sub handle_undline {
+    my ($user, $ip) = (shift, (split /\s+/, shift)[1]);
+
+    # make sure it exists
+    if (exists $main::dline{$ip}) {
+        $user->snt('undline', 'd-line removed.');
+        snotice("$$user{nick} removed d-line on \2$ip\2 [$main::dline{$ip}{reason}]");
+        return delete_dline($ip)
+    }
+
+    # no such kline
+    else {
+        $user->snt('undline', "\2$ip\2 is not a banned IP. (they're case-sensitive.)");
+        return
+    }
+
 }
 
 # handle UNKLINE command
 sub handle_unkline {
+    my ($user, $mask) = (shift, (split /\s+/, shift)[1]);
+
+    # make sure it exists
+    if (exists $main::kline{$mask}) {
+        $user->snt('unkline', 'k-line removed.');
+        snotice("$$user{nick} removed k-line on \2$mask\2 [$main::kline{$mask}{reason}]");
+        return delete_kline($mask)
+    }
+
+    # no such kline
+    else {
+        $user->snt('unkline', "\2$mask\2 is not a banned mask. (they're case-sensitive.)");
+        return
+    }
+
 }
 
 # handle LISTKLINES command
